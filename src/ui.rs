@@ -133,8 +133,8 @@ fn draw_scrollbar(f: &mut Frame, app: &mut App, area: Rect, is_focused: bool) {
 fn draw_help_bar(f: &mut Frame, app: &App, area: Rect) {
     let help_text = if app.show_menu {
         match app.focus_area {
-            FocusArea::Menu => " Ctrl+D/Q 退出 │ ↑↓ 选择菜单 │ →/Tab 切换到内容 │ M 隐藏菜单 │ Enter 选择 ",
-            FocusArea::Content => " Q 退出 │ ↑↓/PgUp/PgDn 滚动 │ ←/Tab 切换到菜单 │ M 隐藏菜单 │ Ctrl+C 复制 │ Ctrl+S 选择模式 ",
+            FocusArea::Menu => " Ctrl+C/D/Q 退出 │ ↑↓ 选择菜单 │ →/Tab 切换到内容 │ M 隐藏菜单 │ Enter 选择 ",
+            FocusArea::Content => " Ctrl+C/Q 退出 │ ↑↓/PgUp/PgDn 滚动 │ ←/Tab 切换到菜单 │ M 隐藏菜单 │ Ctrl+Y 复制 │ Ctrl+S 选择模式 ",
         }
     } else {
         " Q 退出 │ ↑↓/PgUp/PgDn 滚动内容 │ M 显示菜单 │ Ctrl+C 复制内容 │ Ctrl+S 文本选择模式 "
@@ -483,6 +483,12 @@ fn draw_disk_test_content(f: &mut Frame, app: &mut App, area: Rect, is_focused: 
         return;
     }
     
+    if test_info.is_testing {
+        // 测试进行中 - 显示实时图表和进度信息
+        draw_disk_realtime_testing(f, app, area, &test_info, is_focused);
+        return;
+    }
+    
     // 创建磁盘测试项目列表
     let mut items = Vec::new();
     
@@ -491,35 +497,7 @@ fn draw_disk_test_content(f: &mut Frame, app: &mut App, area: Rect, is_focused: 
         Span::styled("━━━ 磁盘性能测试 ━━━", Theme::primary())
     ])));
     
-    if test_info.is_testing {
-        // 显示测试进度
-        items.push(ListItem::new(Line::from(vec![
-            Span::styled("状态: ", Theme::accent()),
-            Span::styled(test_info.current_test.clone(), Theme::warning().add_modifier(Modifier::ITALIC))
-        ])));
-        
-        items.push(ListItem::new(Line::from(vec![
-            Span::styled("进度: ", Theme::accent()),
-            Span::styled(format!("{}%", test_info.progress), Theme::secondary())
-        ])));
-        
-        // 进度条
-        let progress_bar_length = 30;
-        let filled = (test_info.progress as usize * progress_bar_length) / 100;
-        let empty = progress_bar_length - filled;
-        let progress_bar = format!("[{}{}]", 
-            "█".repeat(filled),
-            "░".repeat(empty)
-        );
-        items.push(ListItem::new(Line::from(vec![
-            Span::styled(progress_bar, Theme::disk_test_progress_style(test_info.progress as f64))
-        ])));
-        
-        items.push(ListItem::new(Line::from(vec![
-            Span::styled("正在执行磁盘性能测试，请稍候...", Theme::muted().add_modifier(Modifier::ITALIC))
-        ])));
-        
-    } else if let Some(ref error) = test_info.error_message {
+    if let Some(ref error) = test_info.error_message {
         // 显示错误信息
         items.push(ListItem::new(Line::from(vec![
             Span::styled("错误: ", Theme::accent()),
@@ -1219,4 +1197,170 @@ fn truncate_test_name(name: &str, max_len: usize) -> String {
     } else {
         format!("{}...", &name[..max_len.saturating_sub(3)])
     }
+}
+
+// 绘制磁盘测试实时状态和图表
+fn draw_disk_realtime_testing(f: &mut Frame, _app: &mut App, area: Rect, test_info: &crate::handlers::disk_test::DiskTestInfo, is_focused: bool) {
+    // 创建垂直布局：上部分显示进度信息，下部分显示实时图表
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(8),  // 进度信息区域
+            Constraint::Min(0),     // 图表区域
+        ])
+        .split(area);
+    
+    // 绘制进度信息
+    draw_disk_progress_info(f, test_info, chunks[0], is_focused);
+    
+    // 绘制实时性能图表
+    draw_disk_realtime_charts(f, test_info, chunks[1], is_focused);
+}
+
+// 绘制磁盘测试进度信息
+fn draw_disk_progress_info(f: &mut Frame, test_info: &crate::handlers::disk_test::DiskTestInfo, area: Rect, is_focused: bool) {
+    let mut items = Vec::new();
+    
+    // 当前测试状态
+    items.push(ListItem::new(Line::from(vec![
+        Span::styled("状态: ", Theme::accent()),
+        Span::styled(test_info.current_test.clone(), Theme::warning().add_modifier(Modifier::ITALIC))
+    ])));
+    
+    // 测试进度
+    items.push(ListItem::new(Line::from(vec![
+        Span::styled("进度: ", Theme::accent()),
+        Span::styled(format!("{}%", test_info.progress), Theme::secondary())
+    ])));
+    
+    // 进度条
+    let progress_bar_length = 40;
+    let filled = (test_info.progress as usize * progress_bar_length) / 100;
+    let empty = progress_bar_length - filled;
+    let progress_bar = format!("[{}{}]", 
+        "█".repeat(filled),
+        "░".repeat(empty)
+    );
+    items.push(ListItem::new(Line::from(vec![
+        Span::styled(progress_bar, Theme::disk_test_progress_style(test_info.progress as f64))
+    ])));
+    
+    // 实时速度信息
+    items.push(ListItem::new(Line::from(vec![
+        Span::styled("当前读取: ", Theme::accent()),
+        Span::styled(format!("{:.2} MB/s", test_info.current_read_speed), Theme::success()),
+        Span::styled("  写入: ", Theme::accent()),
+        Span::styled(format!("{:.2} MB/s", test_info.current_write_speed), Theme::secondary())
+    ])));
+    
+    items.push(ListItem::new(Line::from(vec![
+        Span::styled("当前IOPS: ", Theme::accent()),
+        Span::styled(format!("读{:.0} 写{:.0}", test_info.current_read_iops, test_info.current_write_iops), Theme::muted())
+    ])));
+    
+    // 设置边框样式
+    let (border_style, title_style) = if is_focused {
+        (Theme::border_focused(), Theme::title_focused())
+    } else {
+        (Theme::border_unfocused(), Theme::title_unfocused())
+    };
+    
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" 测试进度 ")
+                .title_style(title_style)
+                .title_alignment(Alignment::Center)
+                .border_style(border_style),
+        );
+    
+    f.render_widget(list, area);
+}
+
+// 绘制磁盘实时性能图表
+fn draw_disk_realtime_charts(f: &mut Frame, test_info: &crate::handlers::disk_test::DiskTestInfo, area: Rect, is_focused: bool) {
+    // 创建水平布局：左边速度图表，右边IOPS图表
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(area);
+    
+    // 绘制速度图表
+    draw_realtime_speed_chart(f, test_info, chunks[0], is_focused);
+    
+    // 绘制IOPS图表
+    draw_realtime_iops_chart(f, test_info, chunks[1], is_focused);
+}
+
+// 绘制实时速度图表
+fn draw_realtime_speed_chart(f: &mut Frame, test_info: &crate::handlers::disk_test::DiskTestInfo, area: Rect, is_focused: bool) {
+    let data: Vec<(String, u64)> = if test_info.realtime_data.len() >= 2 {
+        let recent_data = &test_info.realtime_data[test_info.realtime_data.len().saturating_sub(10)..];
+        recent_data.iter().enumerate().map(|(i, point)| {
+            (format!("{}", i), ((point.read_speed + point.write_speed) * 10.0) as u64)
+        }).collect()
+    } else {
+        vec![
+            ("当前".to_string(), ((test_info.current_read_speed + test_info.current_write_speed) * 10.0) as u64)
+        ]
+    };
+    
+    let (border_style, title_style) = if is_focused {
+        (Theme::border_focused(), Theme::title_focused())
+    } else {
+        (Theme::border_unfocused(), Theme::title_unfocused())
+    };
+    
+    let speed_chart = BarChart::default()
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" 实时速度 (MB/s) ")
+                .title_style(title_style)
+                .border_style(border_style)
+        )
+        .data(&data)
+        .bar_width(3)
+        .value_style(Theme::secondary())
+        .label_style(Theme::muted())
+        .bar_style(Theme::success());
+    
+    f.render_widget(speed_chart, area);
+}
+
+// 绘制实时IOPS图表
+fn draw_realtime_iops_chart(f: &mut Frame, test_info: &crate::handlers::disk_test::DiskTestInfo, area: Rect, is_focused: bool) {
+    let data: Vec<(String, u64)> = if test_info.realtime_data.len() >= 2 {
+        let recent_data = &test_info.realtime_data[test_info.realtime_data.len().saturating_sub(10)..];
+        recent_data.iter().enumerate().map(|(i, point)| {
+            (format!("{}", i), (point.read_iops + point.write_iops) as u64)
+        }).collect()
+    } else {
+        vec![
+            ("当前".to_string(), (test_info.current_read_iops + test_info.current_write_iops) as u64)
+        ]
+    };
+    
+    let (border_style, title_style) = if is_focused {
+        (Theme::border_focused(), Theme::title_focused())
+    } else {
+        (Theme::border_unfocused(), Theme::title_unfocused())
+    };
+    
+    let iops_chart = BarChart::default()
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" 实时IOPS ")
+                .title_style(title_style)
+                .border_style(border_style)
+        )
+        .data(&data)
+        .bar_width(3)
+        .value_style(Theme::secondary())
+        .label_style(Theme::muted())
+        .bar_style(Theme::warning());
+    
+    f.render_widget(iops_chart, area);
 }

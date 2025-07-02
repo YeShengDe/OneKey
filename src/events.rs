@@ -8,10 +8,11 @@ pub fn handle_events(app: &mut App) -> Result<bool> {
     if event::poll(Duration::from_millis(100))? {
         if let Event::Key(key) = event::read()? {
             if key.kind == KeyEventKind::Press {
-                // 检查 Ctrl+D 退出程序
+                // 检查退出程序的快捷键
                 if key.modifiers.contains(KeyModifiers::CONTROL) {
                     match key.code {
-                        KeyCode::Char('d') => return Ok(false),
+                        KeyCode::Char('c') | KeyCode::Char('C') => return Ok(false), // Ctrl+C 退出程序
+                        KeyCode::Char('d') | KeyCode::Char('D') => return Ok(false), // Ctrl+D 退出程序
                         _ => {}
                     }
                 }
@@ -31,8 +32,8 @@ fn handle_key_press(app: &mut App, key: KeyEvent) -> Result<bool> {
             Ok(true)
         }
         
-        // Ctrl+C 复制内容到剪贴板
-        KeyCode::Char('c') | KeyCode::Char('C') => {
+        // Ctrl+Y 复制内容到剪贴板
+        KeyCode::Char('y') | KeyCode::Char('Y') => {
             if key.modifiers.contains(KeyModifiers::CONTROL) {
                 let _ = app.copy_content();
                 Ok(true)

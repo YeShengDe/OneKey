@@ -1,12 +1,9 @@
 use std::process::Command;
-use std::fs::{self, OpenOptions};
-use std::io::{self, Write, Read, Seek, SeekFrom};
+use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Instant, Duration};
-use std::path::Path;
-use std::panic;
 
 // 全局刷新标志，用于通知UI更新
 static NEEDS_UI_REFRESH: AtomicBool = AtomicBool::new(false);
@@ -24,6 +21,16 @@ pub struct DiskTestResult {
     pub total_iops: String,
 }
 
+// 实时性能数据点
+#[derive(Debug, Clone)]
+pub struct PerformanceDataPoint {
+    pub timestamp: Instant,
+    pub read_speed: f64,  // MB/s
+    pub write_speed: f64, // MB/s
+    pub read_iops: f64,
+    pub write_iops: f64,
+}
+
 // 磁盘测试状态
 #[derive(Debug, Clone)]
 pub struct DiskTestInfo {
@@ -37,6 +44,11 @@ pub struct DiskTestInfo {
     pub error_message: Option<String>,
     pub disk_info: String,
     pub disk_usage: String,
+    pub realtime_data: Vec<PerformanceDataPoint>, // 实时性能数据
+    pub current_read_speed: f64,  // 当前读取速度 MB/s
+    pub current_write_speed: f64, // 当前写入速度 MB/s
+    pub current_read_iops: f64,   // 当前读取IOPS
+    pub current_write_iops: f64,  // 当前写入IOPS
 }
 
 impl Default for DiskTestInfo {
@@ -52,6 +64,11 @@ impl Default for DiskTestInfo {
             error_message: None,
             disk_info: String::new(),
             disk_usage: String::new(),
+            realtime_data: Vec::new(),
+            current_read_speed: 0.0,
+            current_write_speed: 0.0,
+            current_read_iops: 0.0,
+            current_write_iops: 0.0,
         }
     }
 }
@@ -102,6 +119,7 @@ fn start_disk_test() {
 }
 
 // 重置测试状态，用于重新开始测试
+#[allow(dead_code)]
 pub fn reset_disk_test() {
     DISK_TEST_STARTED.store(false, Ordering::SeqCst);
     if let Ok(mut global_info) = DISK_TEST_INFO.lock() {
@@ -141,8 +159,15 @@ fn run_async_disk_tests() {
         rust_disk_test::run_professional_disk_tests(test_dir)
     }) {
         Ok(results) => results,
-        Err(_) => {
-            update_test_status_with_error("磁盘测试过程中发生错误".to_string());
+        Err(e) => {
+            let error_msg = if let Some(s) = e.downcast_ref::<String>() {
+                format!("磁盘测试过程中发生错误: {}", s)
+            } else if let Some(s) = e.downcast_ref::<&str>() {
+                format!("磁盘测试过程中发生错误: {}", s)
+            } else {
+                "磁盘测试过程中发生未知错误".to_string()
+            };
+            update_test_status_with_error(error_msg);
             return;
         }
     };
@@ -191,6 +216,40 @@ fn update_test_results(results: Vec<DiskTestResult>) {
     if let Ok(mut global_info) = DISK_TEST_INFO.lock() {
         if let Some(ref mut info) = global_info.as_mut() {
             info.results = results;
+            info.last_update = Instant::now();
+            
+            // 设置需要刷新UI的标志
+            NEEDS_UI_REFRESH.store(true, Ordering::Relaxed);
+        }
+    }
+}
+
+// 更新实时性能数据
+fn update_realtime_data(read_speed: f64, write_speed: f64, read_iops: f64, write_iops: f64) {
+    if let Ok(mut global_info) = DISK_TEST_INFO.lock() {
+        if let Some(ref mut info) = global_info.as_mut() {
+            // 更新当前值
+            info.current_read_speed = read_speed;
+            info.current_write_speed = write_speed;
+            info.current_read_iops = read_iops;
+            info.current_write_iops = write_iops;
+            
+            // 添加数据点到历史记录
+            let data_point = PerformanceDataPoint {
+                timestamp: Instant::now(),
+                read_speed,
+                write_speed,
+                read_iops,
+                write_iops,
+            };
+            
+            info.realtime_data.push(data_point);
+            
+            // 保持最近100个数据点
+            if info.realtime_data.len() > 100 {
+                info.realtime_data.remove(0);
+            }
+            
             info.last_update = Instant::now();
             
             // 设置需要刷新UI的标志
@@ -642,7 +701,7 @@ fn get_disk_usage_info() -> String {
 // 纯 Rust 实现的专业磁盘性能测试
 mod rust_disk_test {
     use super::DiskTestResult;
-    use std::fs::{File, OpenOptions};
+    use std::fs::OpenOptions;
     use std::io::{Write, Read, Seek, SeekFrom};
     use std::time::{Instant, Duration};
     use std::path::PathBuf;
@@ -833,7 +892,7 @@ mod rust_disk_test {
     pub fn run_multi_thread_test(test_dir: &str) -> Option<DiskTestResult> {
         let thread_count = num_cpus::get().min(8).max(2); // 2-8 个线程
         let block_size = 4 * 1024; // 4KB
-        let file_size = 80 * 1024 * 1024; // 每线程80MB
+        let _file_size = 80 * 1024 * 1024; // 每线程80MB
         
         let total_read_speed = Arc::new(AtomicU64::new(0));
         let total_write_speed = Arc::new(AtomicU64::new(0));
@@ -1025,6 +1084,12 @@ mod rust_disk_test {
         let mut consecutive_errors = 0;
         const MAX_CONSECUTIVE_ERRORS: u32 = 10;
         
+        // 实时数据更新相关
+        let mut last_update = Instant::now();
+        let update_interval = Duration::from_millis(200); // 每200ms更新一次
+        let mut last_bytes = 0usize;
+        let mut last_ops = 0u64;
+        
         // 获取文件大小（用于随机访问）
         let file_size = if is_read {
             match file.metadata() {
@@ -1076,6 +1141,29 @@ mod rust_disk_test {
                 operations += 1;
                 total_latency += op_start.elapsed().as_secs_f64();
                 consecutive_errors = 0; // 重置错误计数
+                
+                // 实时数据更新
+                if last_update.elapsed() >= update_interval {
+                    let elapsed_since_last = last_update.elapsed().as_secs_f64();
+                    let bytes_delta = bytes_processed - last_bytes;
+                    let ops_delta = operations - last_ops;
+                    
+                    if elapsed_since_last > 0.0 {
+                        let current_speed = (bytes_delta as f64) / (1024.0 * 1024.0) / elapsed_since_last;
+                        let current_iops = ops_delta as f64 / elapsed_since_last;
+                        
+                        // 根据测试类型更新实时数据
+                        if is_read {
+                            super::update_realtime_data(current_speed, 0.0, current_iops, 0.0);
+                        } else {
+                            super::update_realtime_data(0.0, current_speed, 0.0, current_iops);
+                        }
+                    }
+                    
+                    last_update = Instant::now();
+                    last_bytes = bytes_processed;
+                    last_ops = operations;
+                }
             } else if is_read && !random_access {
                 // 顺序读到文件末尾，重置位置
                 if file.seek(SeekFrom::Start(0)).is_ok() {
