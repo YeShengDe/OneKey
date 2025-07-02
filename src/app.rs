@@ -97,8 +97,20 @@ impl App {
     // 新增：处理菜单选择（回车键）
     pub fn handle_menu_selection(&mut self) {
         if self.focus_area == FocusArea::Menu && self.show_menu {
-            // 这里可以添加菜单选择的具体逻辑
-            // 比如执行特定的命令或切换到内容视图
+            // 根据当前选中的菜单项执行相应操作
+            match self.menu.selected_item() {
+                crate::menu::MenuItem::CpuTest => {
+                    // 启动CPU测试
+                    crate::handlers::cpu_test::start_cpu_test();
+                }
+                crate::menu::MenuItem::DiskTest => {
+                    // 启动磁盘测试（如果磁盘测试有类似的start函数）
+                    // crate::handlers::disk_test::start_disk_test();
+                }
+                _ => {
+                    // 其他菜单项的处理
+                }
+            }
             
             // 选择后自动切换到内容区域
             self.set_focus(FocusArea::Content);

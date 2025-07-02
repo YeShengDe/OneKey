@@ -5,13 +5,22 @@ use crate::{app::{App, FocusArea}, types::Result};
 
 /// 处理键盘事件，返回 false 表示退出程序
 pub fn handle_events(app: &mut App) -> Result<bool> {
-    if event::poll(Duration::from_millis(100))? {
+    // 减少轮询间隔，实现更流畅的实时更新（特别是磁盘测试和CPU测试时）
+    let poll_duration = match app.menu.selected_item() {
+        crate::menu::MenuItem::DiskTest | 
+        crate::menu::MenuItem::CpuTest | 
+        crate::menu::MenuItem::NetworkSpeedTest => {
+            Duration::from_millis(50)  // 测试时更频繁的更新
+        },
+        _ => Duration::from_millis(100) // 其他情况保持原有频率
+    };
+    
+    if event::poll(poll_duration)? {
         if let Event::Key(key) = event::read()? {
             if key.kind == KeyEventKind::Press {
                 // 检查退出程序的快捷键
                 if key.modifiers.contains(KeyModifiers::CONTROL) {
                     match key.code {
-                        KeyCode::Char('c') | KeyCode::Char('C') => return Ok(false), // Ctrl+C 退出程序
                         KeyCode::Char('d') | KeyCode::Char('D') => return Ok(false), // Ctrl+D 退出程序
                         _ => {}
                     }
@@ -32,29 +41,16 @@ fn handle_key_press(app: &mut App, key: KeyEvent) -> Result<bool> {
             Ok(true)
         }
         
-        // Ctrl+Y 复制内容到剪贴板
-        KeyCode::Char('y') | KeyCode::Char('Y') => {
-            if key.modifiers.contains(KeyModifiers::CONTROL) {
-                let _ = app.copy_content();
-                Ok(true)
-            } else {
-                Ok(true)
-            }
-        }
-        
-        // Ctrl+S 切换选择模式 (禁用/启用鼠标捕获)
-        KeyCode::Char('s') | KeyCode::Char('S') => {
-            if key.modifiers.contains(KeyModifiers::CONTROL) {
-                app.toggle_selection_mode();
-                if app.selection_mode {
-                    let _ = App::enable_text_selection();
-                } else {
-                    let _ = App::disable_text_selection();
+        // 数字键快速选择菜单项
+        KeyCode::Char(n @ '0'..='9') => {
+            if app.show_menu && app.focus_area == FocusArea::Menu {
+                if app.menu.select_by_number(n) {
+                    // 自动切换到内容区域并触发选择
+                    app.set_focus(FocusArea::Content);
+                    app.handle_menu_selection();
                 }
-                Ok(true)
-            } else {
-                Ok(true)
             }
+            Ok(true)
         }
         
         // 焦点切换
@@ -77,11 +73,19 @@ fn handle_key_press(app: &mut App, key: KeyEvent) -> Result<bool> {
         
         // 上下键移动
         KeyCode::Up => {
-            app.move_up();
+            if app.focus_area == FocusArea::Menu && app.show_menu {
+                app.menu.previous();
+            } else {
+                app.move_up();
+            }
             Ok(true)
         }
         KeyCode::Down => {
-            app.move_down();
+            if app.focus_area == FocusArea::Menu && app.show_menu {
+                app.menu.next();
+            } else {
+                app.move_down();
+            }
             Ok(true)
         }
         

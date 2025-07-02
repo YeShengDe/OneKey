@@ -151,4 +151,78 @@ impl Theme {
     pub fn help_bar() -> Style {
         Style::default().fg(Self::MUTED)
     }
+    
+    // 实时磁盘测试样式
+    pub fn realtime_speed_high() -> Style {
+        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+    }
+    
+    pub fn realtime_speed_medium() -> Style {
+        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+    }
+    
+    pub fn realtime_speed_low() -> Style {
+        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+    }
+    
+    pub fn realtime_iops_high() -> Style {
+        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+    }
+    
+    pub fn realtime_iops_medium() -> Style {
+        Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)
+    }
+    
+    pub fn realtime_iops_low() -> Style {
+        Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
+    }
+    
+    // 实时测试进度动画
+    pub fn spinning_animation() -> Style {
+        Style::default().fg(Self::PRIMARY).add_modifier(Modifier::BOLD)
+    }
+    
+    // 测试阶段颜色
+    pub fn test_phase_active() -> Style {
+        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+    }
+    
+    pub fn test_phase_waiting() -> Style {
+        Style::default().fg(Self::MUTED)
+    }
+    
+    pub fn test_phase_completed() -> Style {
+        Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)
+    }
+    
+    // 根据速度值获取颜色样式
+    pub fn speed_style(speed_mbps: f64) -> Style {
+        if speed_mbps >= 100.0 {
+            Self::realtime_speed_high()
+        } else if speed_mbps >= 10.0 {
+            Self::realtime_speed_medium()
+        } else {
+            Self::realtime_speed_low()
+        }
+    }
+    
+    // 根据IOPS值获取颜色样式
+    pub fn iops_style(iops: f64) -> Style {
+        if iops >= 1000.0 {
+            Self::realtime_iops_high()
+        } else if iops >= 100.0 {
+            Self::realtime_iops_medium()
+        } else {
+            Self::realtime_iops_low()
+        }
+    }
+    
+    // 图表颜色
+    pub fn chart_read_color() -> Color {
+        Color::Green
+    }
+    
+    pub fn chart_write_color() -> Color {
+        Color::Red
+    }
 }

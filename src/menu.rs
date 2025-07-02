@@ -6,8 +6,7 @@ pub enum MenuItem {
     DiskTest,
     CpuTest,
     NetworkSpeedTest,
-    SingBoxScript,
-    XrayScript,
+    CrossGFW,
     OpenPort,
     ClosePort,
     K3s,
@@ -22,8 +21,7 @@ impl MenuItem {
             MenuItem::DiskTest,
             MenuItem::CpuTest,
             MenuItem::NetworkSpeedTest,
-            MenuItem::SingBoxScript,
-            MenuItem::XrayScript,
+            MenuItem::CrossGFW,
             MenuItem::OpenPort,
             MenuItem::ClosePort,
             MenuItem::K3s,
@@ -34,17 +32,16 @@ impl MenuItem {
     
     pub fn as_str(&self) -> &'static str {
         match self {
-            MenuItem::SystemInfo => "系统信息",
-            MenuItem::DiskTest => "硬盘测试",
-            MenuItem::CpuTest => "CPU测试",
-            MenuItem::NetworkSpeedTest => "网速测试",
-            MenuItem::SingBoxScript => "sing-box一键脚本",
-            MenuItem::XrayScript => "xray一键脚本",
-            MenuItem::OpenPort => "开放端口",
-            MenuItem::ClosePort => "关闭端口",
-            MenuItem::K3s => "k3s",
-            MenuItem::K8s => "k8s",
-            MenuItem::TcpOptimization => "tcp调优",
+            MenuItem::SystemInfo => "1. 系统信息",
+            MenuItem::DiskTest => "2. 硬盘测试",
+            MenuItem::CpuTest => "3. CPU测试",
+            MenuItem::NetworkSpeedTest => "4. 网速测试",
+            MenuItem::CrossGFW => "5. 科学上网",
+            MenuItem::OpenPort => "6. 开放端口",
+            MenuItem::ClosePort => "7. 关闭端口",
+            MenuItem::K3s => "8. k3s",
+            MenuItem::K8s => "9. k8s",
+            MenuItem::TcpOptimization => "0. tcp调优",
         }
     }
     
@@ -54,8 +51,7 @@ impl MenuItem {
             MenuItem::DiskTest => "测试硬盘读写性能",
             MenuItem::CpuTest => "测试CPU性能",
             MenuItem::NetworkSpeedTest => "测试网络速度",
-            MenuItem::SingBoxScript => "安装和配置sing-box",
-            MenuItem::XrayScript => "安装和配置xray",
+            MenuItem::CrossGFW => "科学上网",
             MenuItem::OpenPort => "开放防火墙端口",
             MenuItem::ClosePort => "关闭防火墙端口",
             MenuItem::K3s => "部署轻量级Kubernetes",
@@ -106,5 +102,29 @@ impl Menu {
     
     pub fn items(&self) -> &[MenuItem] {
         &self.items
+    }
+    
+    /// 通过数字键选择菜单项
+    pub fn select_by_number(&mut self, number: char) -> bool {
+        let index = match number {
+            '1' => 0, // SystemInfo
+            '2' => 1, // DiskTest
+            '3' => 2, // CpuTest
+            '4' => 3, // NetworkSpeedTest
+            '5' => 4, // CrossGFW
+            '6' => 5, // OpenPort
+            '7' => 6, // ClosePort
+            '8' => 7, // K3s
+            '9' => 8, // K8s
+            '0' => 9, // TcpOptimization
+            _ => return false,
+        };
+        
+        if index < self.items.len() {
+            self.selected = index;
+            true
+        } else {
+            false
+        }
     }
 }
